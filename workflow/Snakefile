@@ -1,0 +1,7 @@
+# relative to workflow dir
+configfile: "config/config.yaml"
+
+# relative to Snakefile
+include: "rules/prep_ont.smk"
+include: "rules/asmb_flye.smk"
+#include: "rules/polish.snk"
