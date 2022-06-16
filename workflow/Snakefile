@@ -1,7 +1,56 @@
 # relative to workflow dir
 configfile: "config/config.yaml"
 
+FASTQ, = glob_wildcards('reads-np/{fastq}.fastq.gz')
+FASTQ.sort()
+RUN=os.path.basename(os.getcwd())
+OUT=RUN + "-polished.fna"
+
+# NOTE: omx will set --use-conda --conda-prefix omx/workflow-conda-envs to install all envs in one place
+rule all:
+    input: OUT
+
+# preactivating conda for other rules doesn't seem to be robust... downstream
+# rules failed on missing progs that should be present in env => use per rule envs
+# with omx and conda-prefix that also isn't an issue anymore
+
+# rule load_conda:
+#   input: OUT
+#    conda: "envs/env.yaml"
+#    output: temp("omx-assemble-ont-env-loaded")
+#    shell: "touch {output}"
+
 # relative to Snakefile
-include: "rules/prep_ont.smk"
-include: "rules/asmb_flye.smk"
-#include: "rules/polish.snk"
+#include: "rules/prep_ont.smk"
+#include: "rules/asmb_flye.smk"
+#include: "rules/polish_asm.smk"
+
+rule filt_ont:
+    input: "reads-np/{fastq}.fastq.gz"
+    output: temp("reads-tmp/{fastq}.fq")
+    params:
+        min_length=config["prep_np"]["min_length"]
+    shell: "seqkit seq -m {params.min_length} {input} > {output}"
+
+rule prep_ont:
+    output: "reads-np.fq"
+    input: expand("reads-tmp/{fastq}.fq", fastq=FASTQ)
+    shell: "cat {input} > {output}"
+
+rule flye:
+    input: "reads-np.fq"
+    output: "flye/assembly.fasta"
+    threads: 12
+    params: config["flye"]
+    shell: "flye -t {threads} {params} --nano-hq {input} -o flye"
+
+rule flye_post:
+    input: "flye/assembly.fasta"
+    output: "flye/{run}.fna"
+    shell: "flye-post --min-length 2000 --id-pattern '%s_%03d' flye flye/{wildcards.run}"
+
+rule seq_polish:
+    conda: "envs/env.yaml"
+    input: "flye/{run}.fna"
+    output: "{run}-polished.fna"
+    shell: "seq-polish {input} -o {output} -n reads-np.fq"
